@@ -15,6 +15,7 @@ data:
   code_column: code
   batch_size: 512
   num_workers: 0
+  load_max_instruments: 500
   splits:
     train: {start: "2014-01-01", end: "2021-12-31"}
     valid: {start: "2022-01-01", end: "2023-12-31"}

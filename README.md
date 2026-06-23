@@ -141,10 +141,22 @@ The FTT configuration uses two 64-dimensional Transformer blocks and a batch
 size of 64 to reduce memory use. It is still substantially slower than MLP and
 ResNet on CPU.
 
-The default first run samples 100 stocks so that it can produce a result in a
-reasonable time. After the pipeline succeeds, set
-`data.prices_build.max_instruments: null` in the YAML file and delete the
-existing `data/alpha158_prices.parquet` cache to rebuild the full universe.
+`data.prices_build.max_instruments` controls how many stocks are written when
+the factor cache is created. Set it to `null` for a full-universe cache or to a
+smaller number for a quick factor-building test. Changing it requires deleting
+the existing `data/alpha158_prices.parquet` cache.
+
+For full-universe caches, `data.load_max_instruments` controls how many stocks
+are loaded into memory for one training run. This does not rebuild or shrink
+the cache:
+
+```yaml
+data:
+  load_max_instruments: 500  # null loads every stock into RAM
+```
+
+On a typical Mac, start with 500 for MLP/ResNet and 200 for FTT. Loading all
+5,000+ stocks at once can exceed memory and cause macOS to print `zsh: killed`.
 
 Artifacts are written to `rtdl_quant/outputs/<experiment_name>/`:
 

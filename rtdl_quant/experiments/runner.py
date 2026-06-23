@@ -151,7 +151,10 @@ class ExperimentRunner:
                 )
             ).build_to_parquet()
         if path.suffix == ".parquet":
-            frame = pd.read_parquet(path)
+            filters = self._parquet_instrument_filter(
+                path, data_config.get("load_max_instruments")
+            )
+            frame = pd.read_parquet(path, filters=filters)
         elif path.suffix == ".csv":
             frame = pd.read_csv(path)
         else:
@@ -199,6 +202,53 @@ class ExperimentRunner:
         if not feature_columns:
             raise ValueError("Could not infer any numerical feature columns")
         return frame, feature_columns
+
+    @staticmethod
+    def _parquet_instrument_filter(
+        path: Path, max_instruments: int | None
+    ) -> list[tuple[str, str, list[str]]] | None:
+        """Select an evenly spaced stock subset using Parquet row-group metadata."""
+        if max_instruments is None:
+            return None
+        if max_instruments <= 0:
+            raise ValueError("data.load_max_instruments must be positive or null")
+
+        import pyarrow.parquet as pq
+
+        parquet = pq.ParquetFile(path)
+        code_index = parquet.schema_arrow.get_field_index("code")
+        if code_index < 0:
+            raise KeyError("Parquet dataset has no 'code' column")
+
+        codes: list[str] = []
+        for index in range(parquet.num_row_groups):
+            column = parquet.metadata.row_group(index).column(code_index)
+            statistics = column.statistics
+            if statistics is None or statistics.min != statistics.max:
+                codes = (
+                    pd.read_parquet(path, columns=["code"])["code"]
+                    .drop_duplicates()
+                    .sort_values()
+                    .astype(str)
+                    .tolist()
+                )
+                break
+            value = statistics.min
+            codes.append(
+                value.decode("utf-8") if isinstance(value, bytes) else str(value)
+            )
+        codes = sorted(set(codes))
+        if max_instruments >= len(codes):
+            return None
+        indices = np.linspace(0, len(codes) - 1, max_instruments, dtype=int)
+        selected = [codes[index] for index in indices]
+        LOGGER.info(
+            "Loading %d of %d instruments from %s",
+            len(selected),
+            len(codes),
+            path,
+        )
+        return [("code", "in", selected)]
 
     def _build_loaders(
         self, frame: pd.DataFrame, feature_columns: list[str]
