@@ -128,6 +128,24 @@ Run a specific model with a dedicated configuration:
 ./train_model.sh ftt
 ```
 
+Train all models sequentially and create a comparison table:
+
+```bash
+./train_all.sh
+```
+
+Existing completed models are skipped. To retrain all three from scratch:
+
+```bash
+./train_all.sh --force
+```
+
+The summary is written to:
+
+```text
+rtdl_quant/outputs/model_comparison.csv
+```
+
 All three models reuse `data/alpha158_prices.parquet`; factors are not rebuilt
 between model runs. Results are stored separately:
 
