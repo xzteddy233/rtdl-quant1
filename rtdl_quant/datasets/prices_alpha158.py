@@ -132,6 +132,7 @@ class PricesAlpha158Builder:
         output = Path(self.config.output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_suffix(output.suffix + ".tmp")
+        temporary.unlink(missing_ok=True)
         writer: pq.ParquetWriter | None = None
         rows_written = 0
         try:
@@ -157,6 +158,12 @@ class PricesAlpha158Builder:
                         len(paths),
                         rows_written,
                     )
+        except Exception:
+            if writer is not None:
+                writer.close()
+                writer = None
+            temporary.unlink(missing_ok=True)
+            raise
         finally:
             if writer is not None:
                 writer.close()
@@ -323,6 +330,10 @@ def _rolling_linear_stats(
     series: pd.Series, window: int
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     values = series.to_numpy(dtype=float)
+    if len(values) < window:
+        empty = pd.Series(np.nan, index=series.index, dtype=float)
+        return empty.copy(), empty.copy(), empty.copy()
+
     x = np.arange(window, dtype=float)
     centered_x = x - x.mean()
     x_square_sum = np.square(centered_x).sum()

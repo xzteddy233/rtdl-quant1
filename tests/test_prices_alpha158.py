@@ -53,6 +53,16 @@ def test_features_do_not_use_future_rows() -> None:
     pd.testing.assert_series_equal(before.loc[79], after.loc[79])
 
 
+def test_short_price_history_returns_empty_mature_factor_set(tmp_path) -> None:
+    path = tmp_path / "SH600001.csv"
+    make_prices(rows=30).to_csv(path, index=False, encoding="utf-8-sig")
+    builder = PricesAlpha158Builder(
+        PricesBuildConfig(prices_dir=tmp_path, horizon=20)
+    )
+    result = builder.transform_file(path)
+    assert result.empty
+
+
 def test_builder_creates_future_return_and_metadata(tmp_path) -> None:
     path = tmp_path / "SH600000.csv"
     make_prices().to_csv(path, index=False, encoding="utf-8-sig")
