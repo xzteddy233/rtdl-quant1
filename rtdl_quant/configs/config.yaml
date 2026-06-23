@@ -25,7 +25,7 @@ data:
     horizon: 20
     exclude_st: true
     require_trading: true
-    max_instruments: null
+    max_instruments: 100
 
 model:
   name: resnet

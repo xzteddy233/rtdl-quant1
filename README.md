@@ -39,6 +39,13 @@ pip install -r requirements.txt
 pytest
 ```
 
+Qlib is optional because the default workflow reads `prices/*.csv` directly.
+Install it separately only when using `Alpha158Dataset.from_qlib`:
+
+```bash
+pip install ".[qlib]"
+```
+
 ## Data contract
 
 The experiment runner accepts CSV or Parquet with one row per stock and date:
@@ -108,12 +115,15 @@ Alpha158 cache, builds it from `prices/` when missing, then trains, evaluates,
 and runs the grouped backtest:
 
 ```bash
-python main.py
+./run.sh
 ```
 
-The first run processes all configured stock CSVs and therefore takes much
-longer than later runs. To perform a quick check first, set
-`data.prices_build.max_instruments: 100` in the YAML file.
+The script creates `.venv` and installs missing dependencies automatically.
+
+The default first run samples 100 stocks so that it can produce a result in a
+reasonable time. After the pipeline succeeds, set
+`data.prices_build.max_instruments: null` in the YAML file and delete the
+existing `data/alpha158_prices.parquet` cache to rebuild the full universe.
 
 Artifacts are written to `rtdl_quant/outputs/<experiment_name>/`:
 

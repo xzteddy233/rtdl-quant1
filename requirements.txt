@@ -15,8 +15,5 @@ tqdm>=4.66,<5
 # Research and visualization
 matplotlib>=3.8,<4
 
-# Data source (optional in production environments, required for Qlib ingestion)
-pyqlib>=0.9.6
-
 # Development
 pytest>=8,<10

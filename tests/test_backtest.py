@@ -24,7 +24,7 @@ def test_ic_analysis() -> None:
     result = ICAnalysis(make_panel()).result()
     assert np.allclose(result["ic"], 1.0)
     assert np.allclose(result["rank_ic"], 1.0)
-    assert result["cumulative_ic"].iloc[-1] == 3.0
+    assert np.isclose(result["cumulative_ic"].iloc[-1], 3.0)
 
 
 def test_group_backtest_top_minus_bottom() -> None:
