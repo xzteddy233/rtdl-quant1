@@ -159,14 +159,27 @@ class MLPModel(TorchModel):
     def __init__(
         self,
         d_in: int = 158,
-        d_layers: tuple[int, ...] = (256, 128),
+        d_layers: tuple[int, ...] = (256, 256),
         dropout: float = 0.1,
         **kwargs: Any,
     ) -> None:
         package = _require_rtdl()
-        module = package.MLP.make_baseline(
-            d_in=d_in, d_layers=list(d_layers), dropout=dropout, d_out=1
-        )
+        if hasattr(package.MLP, "make_baseline"):
+            module = package.MLP.make_baseline(
+                d_in=d_in, d_layers=list(d_layers), dropout=dropout, d_out=1
+            )
+        else:
+            if len(set(d_layers)) != 1:
+                raise ValueError(
+                    "rtdl-revisiting-models 0.0.2 requires equal MLP block widths"
+                )
+            module = package.MLP(
+                d_in=d_in,
+                d_out=1,
+                n_blocks=len(d_layers),
+                d_block=d_layers[0],
+                dropout=dropout,
+            )
         super().__init__(
             module,
             model_config={
@@ -192,7 +205,8 @@ class ResNetModel(TorchModel):
         **kwargs: Any,
     ) -> None:
         package = _require_rtdl()
-        module = package.ResNet.make_baseline(
+        constructor = getattr(package.ResNet, "make_baseline", package.ResNet)
+        module = constructor(
             d_in=d_in,
             d_out=1,
             n_blocks=n_blocks,
@@ -223,6 +237,8 @@ class FTTransformerModel(TorchModel):
         self,
         n_num_features: int = 158,
         cat_cardinalities: list[int] | None = None,
+        n_blocks: int = 2,
+        d_block: int | None = None,
         **kwargs: Any,
     ) -> None:
         package = _require_rtdl()
@@ -230,11 +246,23 @@ class FTTransformerModel(TorchModel):
             raise NotImplementedError(
                 "The unified x_num-only API currently supports numerical features only"
             )
-        module = package.FTTransformer.make_default(
-            n_num_features=n_num_features,
-            cat_cardinalities=None,
-            d_out=1,
-        )
+        if hasattr(package.FTTransformer, "make_default"):
+            module = package.FTTransformer.make_default(
+                n_num_features=n_num_features,
+                cat_cardinalities=None,
+                d_out=1,
+                n_blocks=n_blocks,
+            )
+        else:
+            backbone_config = package.FTTransformer.get_default_kwargs(n_blocks)
+            if d_block is not None:
+                backbone_config["d_block"] = d_block
+            backbone_config["d_out"] = 1
+            module = package.FTTransformer(
+                n_cont_features=n_num_features,
+                cat_cardinalities=[],
+                **backbone_config,
+            )
 
         class NumericalFTTransformer(nn.Module):
             def __init__(self, model: nn.Module) -> None:
@@ -245,13 +273,19 @@ class FTTransformerModel(TorchModel):
                 return self.model(x_num, None)
 
         wrapped = NumericalFTTransformer(module)
-        parameter_groups = package.get_parameter_groups(module)
+        parameter_groups = (
+            module.make_parameter_groups()
+            if hasattr(module, "make_parameter_groups")
+            else package.get_parameter_groups(module)
+        )
         super().__init__(
             wrapped,
             optimizer_parameter_groups=parameter_groups,
             model_config={
                 "name": "ft_transformer",
                 "n_num_features": n_num_features,
+                "n_blocks": n_blocks,
+                "d_block": d_block,
             },
             **kwargs,
         )

@@ -1,0 +1,49 @@
+experiment:
+  name: alpha158_ft_transformer
+  seed: 42
+  output_dir: rtdl_quant/outputs
+
+data:
+  source: prices
+  prices_dir: prices
+  path: data/alpha158_prices.parquet
+  auto_prepare: true
+  feature_prefix: null
+  label_column: label
+  future_return_column: future_return
+  date_column: date
+  code_column: code
+  batch_size: 64
+  num_workers: 0
+  splits:
+    train: {start: "2014-01-01", end: "2021-12-31"}
+    valid: {start: "2022-01-01", end: "2023-12-31"}
+    test: {start: "2024-01-01", end: "2026-06-18"}
+  prices_build:
+    start_date: "2014-01-01"
+    end_date: "2026-06-18"
+    horizon: 20
+    exclude_st: true
+    require_trading: true
+    max_instruments: null
+
+model:
+  name: ft_transformer
+  d_in: 158
+  n_blocks: 2
+  d_block: 64
+  attention_n_heads: 8
+  attention_dropout: 0.15
+  ffn_d_hidden: null
+  ffn_d_hidden_multiplier: 1.3333333333
+  ffn_dropout: 0.05
+  residual_dropout: 0.0
+
+trainer:
+  epochs: 50
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  patience: 8
+  gradient_clip_norm: 1.0
+  mixed_precision: true
+  device: auto

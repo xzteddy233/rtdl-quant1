@@ -120,6 +120,27 @@ and runs the grouped backtest:
 
 The script creates `.venv` and installs missing dependencies automatically.
 
+Run a specific model with a dedicated configuration:
+
+```bash
+./train_model.sh mlp
+./train_model.sh resnet
+./train_model.sh ftt
+```
+
+All three models reuse `data/alpha158_prices.parquet`; factors are not rebuilt
+between model runs. Results are stored separately:
+
+```text
+rtdl_quant/outputs/alpha158_mlp/
+rtdl_quant/outputs/alpha158_resnet/
+rtdl_quant/outputs/alpha158_ft_transformer/
+```
+
+The FTT configuration uses two 64-dimensional Transformer blocks and a batch
+size of 64 to reduce memory use. It is still substantially slower than MLP and
+ResNet on CPU.
+
 The default first run samples 100 stocks so that it can produce a result in a
 reasonable time. After the pipeline succeeds, set
 `data.prices_build.max_instruments: null` in the YAML file and delete the

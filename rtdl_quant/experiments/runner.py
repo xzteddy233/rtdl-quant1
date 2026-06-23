@@ -239,17 +239,33 @@ class ExperimentRunner:
                     "FT-Transformer requires rtdl-revisiting-models"
                 ) from error
             model_config.pop("d_in")
-            official = rtdl.FTTransformer.make_default(
-                n_num_features=d_in,
-                cat_cardinalities=None,
-                d_out=1,
-                **model_config,
-            )
+            n_blocks = int(model_config.pop("n_blocks", 2))
+            if hasattr(rtdl.FTTransformer, "make_default"):
+                official = rtdl.FTTransformer.make_default(
+                    n_num_features=d_in,
+                    cat_cardinalities=None,
+                    d_out=1,
+                    n_blocks=n_blocks,
+                    **model_config,
+                )
+            else:
+                backbone_config = rtdl.FTTransformer.get_default_kwargs(n_blocks)
+                backbone_config.update(model_config)
+                backbone_config["d_out"] = 1
+                official = rtdl.FTTransformer(
+                    n_cont_features=d_in,
+                    cat_cardinalities=[],
+                    **backbone_config,
+                )
             wrapped = _NumericalFTTransformer(official)
             trainer_config = self.config["trainer"]
+            if hasattr(official, "make_parameter_groups"):
+                parameter_groups = official.make_parameter_groups()
+            else:
+                parameter_groups = rtdl.get_parameter_groups(official)
             optimizer = AdamW(
-                rtdl.get_parameter_groups(official),
-                lr=float(trainer_config.get("learning_rate", 1e-3)),
+                parameter_groups,
+                lr=float(trainer_config.get("learning_rate", 1e-4)),
                 weight_decay=float(trainer_config.get("weight_decay", 1e-5)),
             )
             return wrapped, optimizer
