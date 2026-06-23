@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import argparse
+import logging
+from pathlib import Path
+
+from rtdl_quant.datasets.prices_alpha158 import (
+    PricesAlpha158Builder,
+    PricesBuildConfig,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build an Alpha158 Parquet cache from prices/*.csv"
+    )
+    parser.add_argument("--prices-dir", type=Path, default=Path("prices"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("data/alpha158_prices.parquet")
+    )
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
+    parser.add_argument("--horizon", type=int, default=20)
+    parser.add_argument("--max-instruments", type=int)
+    parser.add_argument("--include-st", action="store_true")
+    parser.add_argument("--include-suspended", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    builder = PricesAlpha158Builder(
+        PricesBuildConfig(
+            prices_dir=args.prices_dir,
+            output_path=args.output,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            horizon=args.horizon,
+            exclude_st=not args.include_st,
+            require_trading=not args.include_suspended,
+            max_instruments=args.max_instruments,
+        )
+    )
+    output = builder.build_to_parquet()
+    print(f"Alpha158 dataset saved to {output}")
+
+
+if __name__ == "__main__":
+    main()

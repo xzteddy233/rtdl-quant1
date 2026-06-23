@@ -12,7 +12,11 @@ from torch import nn
 from torch.optim import AdamW
 
 from rtdl_quant.backtest import GroupBacktest, ICAnalysis
-from rtdl_quant.datasets import DatasetSplit, build_dataloaders
+from rtdl_quant.datasets import (
+    DatasetSplit,
+    add_cross_sectional_rank_label,
+    build_dataloaders,
+)
 from rtdl_quant.metrics import mae, mse, rmse
 from rtdl_quant.models import MLP, MLPConfig, ResNet, ResNetConfig
 from rtdl_quant.trainer import Trainer, TrainerConfig
@@ -120,16 +124,66 @@ class ExperimentRunner:
 
     def _load_frame(self) -> tuple[pd.DataFrame, list[str]]:
         data_config = self.config["data"]
+        source = data_config.get("source", "file").lower()
         path = Path(data_config["path"])
+        if source == "prices" and not path.exists():
+            if not data_config.get("auto_prepare", False):
+                raise FileNotFoundError(
+                    f"{path} does not exist. Build it with "
+                    "`python -m rtdl_quant.scripts.build_prices_dataset`."
+                )
+            from rtdl_quant.datasets.prices_alpha158 import (
+                PricesAlpha158Builder,
+                PricesBuildConfig,
+            )
+
+            build = data_config.get("prices_build", {})
+            path = PricesAlpha158Builder(
+                PricesBuildConfig(
+                    prices_dir=data_config.get("prices_dir", "prices"),
+                    output_path=path,
+                    start_date=build.get("start_date"),
+                    end_date=build.get("end_date"),
+                    horizon=int(build.get("horizon", 20)),
+                    exclude_st=bool(build.get("exclude_st", True)),
+                    require_trading=bool(build.get("require_trading", True)),
+                    max_instruments=build.get("max_instruments"),
+                )
+            ).build_to_parquet()
         if path.suffix == ".parquet":
             frame = pd.read_parquet(path)
         elif path.suffix == ".csv":
             frame = pd.read_csv(path)
         else:
             raise ValueError("Data path must end in .parquet or .csv")
+        label_column = data_config.get("label_column", "label")
+        future_return_column = data_config.get(
+            "future_return_column", "future_return"
+        )
+        if label_column not in frame and future_return_column in frame:
+            frame = add_cross_sectional_rank_label(
+                frame,
+                future_return_column=future_return_column,
+                date_column=data_config.get("date_column", "date"),
+                output_column=label_column,
+            )
 
+        explicit_features = data_config.get("feature_columns")
         prefix = data_config.get("feature_prefix", "feature_")
-        feature_columns = [column for column in frame.columns if column.startswith(prefix)]
+        if explicit_features:
+            feature_columns = list(explicit_features)
+        elif source == "prices":
+            from rtdl_quant.datasets.prices_alpha158 import ALPHA158_FEATURES
+
+            feature_columns = [
+                column for column in ALPHA158_FEATURES if column in frame.columns
+            ]
+        elif prefix:
+            feature_columns = [
+                column for column in frame.columns if column.startswith(prefix)
+            ]
+        else:
+            feature_columns = []
         if not feature_columns:
             excluded = {
                 data_config.get("label_column", "label"),

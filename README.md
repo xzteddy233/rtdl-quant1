@@ -70,6 +70,37 @@ The adapter understands Qlib's `(datetime, instrument)` MultiIndex and
 `(feature, label)` column groups. It retains the raw Qlib label as
 `future_return` and creates a within-date percentile rank as `label`.
 
+### Using the local `prices/` market data
+
+The default configuration now uses the 5,497 per-stock CSV files under
+`prices/`. Raw market data is intentionally ignored by Git.
+
+Build the reusable Alpha158 cache once:
+
+```bash
+python -m rtdl_quant.scripts.build_prices_dataset \
+  --prices-dir prices \
+  --output data/alpha158_prices.parquet \
+  --start-date 2014-01-01 \
+  --end-date 2026-06-18
+```
+
+For a quick pipeline check, limit the universe:
+
+```bash
+python -m rtdl_quant.scripts.build_prices_dataset \
+  --max-instruments 100 \
+  --start-date 2022-01-01
+```
+
+Limited universes are sampled evenly from the sorted SH/SZ file list rather
+than taking only the first stock codes.
+
+The builder reads the adjusted OHLCV fields, calculates the 158 Qlib-style
+factors using only current and historical observations, and creates the raw
+future 20-trading-day return. Cross-sectional rank labels are added only after
+all instruments are combined. The Parquet cache is also ignored by Git.
+
 ## Run an experiment
 
 Edit `rtdl_quant/configs/config.yaml`, then:

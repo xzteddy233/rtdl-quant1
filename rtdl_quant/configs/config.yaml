@@ -4,8 +4,11 @@ experiment:
   output_dir: rtdl_quant/outputs
 
 data:
-  path: data/alpha158.parquet
-  feature_prefix: feature_
+  source: prices
+  prices_dir: prices
+  path: data/alpha158_prices.parquet
+  auto_prepare: false
+  feature_prefix: null
   label_column: label
   future_return_column: future_return
   date_column: date
@@ -13,9 +16,16 @@ data:
   batch_size: 256
   num_workers: 0
   splits:
-    train: {start: "2008-01-01", end: "2016-12-31"}
-    valid: {start: "2017-01-01", end: "2018-12-31"}
-    test: {start: "2019-01-01", end: "2022-12-31"}
+    train: {start: "2014-01-01", end: "2021-12-31"}
+    valid: {start: "2022-01-01", end: "2023-12-31"}
+    test: {start: "2024-01-01", end: "2026-06-18"}
+  prices_build:
+    start_date: "2014-01-01"
+    end_date: "2026-06-18"
+    horizon: 20
+    exclude_st: true
+    require_trading: true
+    max_instruments: null
 
 model:
   name: resnet
