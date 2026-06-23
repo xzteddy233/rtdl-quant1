@@ -7,7 +7,7 @@ data:
   source: prices
   prices_dir: prices
   path: data/alpha158_prices.parquet
-  auto_prepare: false
+  auto_prepare: true
   feature_prefix: null
   label_column: label
   future_return_column: future_return

@@ -103,11 +103,17 @@ all instruments are combined. The Parquet cache is also ignored by Git.
 
 ## Run an experiment
 
-Edit `rtdl_quant/configs/config.yaml`, then:
+The default configuration is a one-command pipeline. It checks for the
+Alpha158 cache, builds it from `prices/` when missing, then trains, evaluates,
+and runs the grouped backtest:
 
 ```bash
-python main.py --config rtdl_quant/configs/config.yaml
+python main.py
 ```
+
+The first run processes all configured stock CSVs and therefore takes much
+longer than later runs. To perform a quick check first, set
+`data.prices_build.max_instruments: 100` in the YAML file.
 
 Artifacts are written to `rtdl_quant/outputs/<experiment_name>/`:
 
