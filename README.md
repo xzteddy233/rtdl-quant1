@@ -156,8 +156,47 @@ rtdl_quant/outputs/alpha158_ft_transformer/
 ```
 
 The FTT configuration uses two 64-dimensional Transformer blocks and a batch
-size of 64 to reduce memory use. It is still substantially slower than MLP and
+size of 128 to reduce runtime. It is still substantially slower than MLP and
 ResNet on CPU.
+
+## Industry and market-cap neutralization
+
+Each model configuration includes an optional post-processing step:
+
+```yaml
+evaluation:
+  neutralization:
+    enabled: true
+    industry: true
+    market_cap: true
+    standardize: true
+    industry_path: industry/industry.csv
+    industry_code_column: symbol
+    industry_column: industry
+```
+
+For each date, the model score is residualized against industry dummies and
+log free-float market cap. Free-float market cap is estimated from the local
+market data as:
+
+```text
+free-float shares = volume / (turnover_percent / 100)
+free-float market cap = close * free-float shares
+```
+
+Set `enabled: false` to use the raw model score. `predictions.parquet` retains
+both `raw_prediction` and the final `prediction`. When neutralization is
+enabled, additional files are created:
+
+```text
+daily_ic_raw.csv
+group_returns_raw.csv
+neutralization_summary.csv
+```
+
+The supplied industry file is a static classification dated June 22, 2026.
+It is useful for current-universe research, but it does not capture historical
+industry changes and should not be treated as a point-in-time classification.
 
 `data.prices_build.max_instruments` controls how many stocks are written when
 the factor cache is created. Set it to `null` for a full-universe cache or to a

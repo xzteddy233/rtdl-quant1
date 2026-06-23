@@ -70,6 +70,11 @@ def test_builder_creates_future_return_and_metadata(tmp_path) -> None:
         PricesBuildConfig(prices_dir=tmp_path, horizon=20)
     )
     result = builder.transform_file(path)
-    assert {"date", "code", "future_return"}.issubset(result.columns)
+    assert {
+        "date",
+        "code",
+        "future_return",
+        "float_market_cap",
+    }.issubset(result.columns)
     assert result["code"].eq("SH600000").all()
     assert len(result) > 0

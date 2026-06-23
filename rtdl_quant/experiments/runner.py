@@ -11,7 +11,13 @@ import torch
 from torch import nn
 from torch.optim import AdamW
 
-from rtdl_quant.backtest import GroupBacktest, ICAnalysis
+from rtdl_quant.backtest import (
+    GroupBacktest,
+    ICAnalysis,
+    load_float_market_cap,
+    load_industry_map,
+    neutralize_cross_sectional_signal,
+)
 from rtdl_quant.datasets import (
     DatasetSplit,
     add_cross_sectional_rank_label,
@@ -89,11 +95,31 @@ class ExperimentRunner:
             {
                 "date": pd.to_datetime(test_dataset.dates),
                 "code": test_dataset.codes,
-                "prediction": predictions,
+                "raw_prediction": predictions,
                 "label": labels,
                 "future_return": future_returns,
             }
         )
+        evaluation["prediction"] = evaluation["raw_prediction"]
+        raw_ic_analysis = ICAnalysis(
+            evaluation, prediction_column="raw_prediction"
+        )
+        raw_daily_ic = raw_ic_analysis.result()
+        raw_summary = raw_ic_analysis.summary(raw_daily_ic)
+        raw_group_result = GroupBacktest(
+            evaluation, prediction_column="raw_prediction"
+        ).run()
+
+        neutralization_summary = self._neutralize_predictions(evaluation, frame)
+        if neutralization_summary is not None:
+            evaluation, coverage = neutralization_summary
+            pd.DataFrame([asdict(coverage)]).to_csv(
+                self.output_dir / "neutralization_summary.csv", index=False
+            )
+            raw_daily_ic.to_csv(self.output_dir / "daily_ic_raw.csv")
+            raw_group_result.group_returns.to_csv(
+                self.output_dir / "group_returns_raw.csv"
+            )
         evaluation.to_parquet(self.output_dir / "predictions.parquet", index=False)
 
         ic_analysis = ICAnalysis(evaluation)
@@ -114,6 +140,13 @@ class ExperimentRunner:
             "best_validation_loss": fit_result.validation_loss,
             "best_epoch": float(fit_result.best_epoch),
             "top_bottom_mean": float(group_result.top_bottom_spread.mean()),
+            "raw_ic": raw_summary.ic_mean,
+            "raw_rank_ic": raw_summary.rank_ic_mean,
+            "raw_icir": raw_summary.icir,
+            "raw_rank_icir": raw_summary.rank_icir,
+            "raw_top_bottom_mean": float(
+                raw_group_result.top_bottom_spread.mean()
+            ),
         }
         pd.DataFrame([metrics]).to_csv(self.output_dir / "metrics.csv", index=False)
         pd.DataFrame(fit_result.history).to_csv(
@@ -121,6 +154,46 @@ class ExperimentRunner:
         )
         LOGGER.info("experiment_complete metrics=%s", metrics)
         return metrics
+
+    def _neutralize_predictions(
+        self, evaluation: pd.DataFrame, source_frame: pd.DataFrame
+    ) -> tuple[pd.DataFrame, Any] | None:
+        config = self.config.get("evaluation", {}).get("neutralization", {})
+        if not config.get("enabled", False):
+            return None
+
+        industry = load_industry_map(
+            config.get("industry_path", "industry/industry.csv"),
+            code_column=config.get("industry_code_column", "symbol"),
+            industry_column=config.get("industry_column", "industry"),
+        )
+        enriched = evaluation.merge(industry, on="code", how="left")
+
+        if "float_market_cap" in source_frame.columns:
+            market_cap = source_frame[
+                ["date", "code", "float_market_cap"]
+            ].copy()
+            market_cap["date"] = pd.to_datetime(market_cap["date"])
+        else:
+            market_cap = load_float_market_cap(
+                self.config["data"].get("prices_dir", "prices"),
+                enriched["code"].unique(),
+                start_date=enriched["date"].min(),
+                end_date=enriched["date"].max(),
+            )
+        enriched = enriched.merge(
+            market_cap, on=["date", "code"], how="left"
+        )
+        enriched, summary = neutralize_cross_sectional_signal(
+            enriched,
+            signal_column="raw_prediction",
+            output_column="prediction",
+            neutralize_industry=bool(config.get("industry", True)),
+            neutralize_market_cap=bool(config.get("market_cap", True)),
+            standardize=bool(config.get("standardize", True)),
+        )
+        LOGGER.info("neutralization_summary=%s", asdict(summary))
+        return enriched, summary
 
     def _load_frame(self) -> tuple[pd.DataFrame, list[str]]:
         data_config = self.config["data"]

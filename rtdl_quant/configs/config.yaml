@@ -45,3 +45,13 @@ trainer:
   gradient_clip_norm: 1.0
   mixed_precision: true
   device: auto
+
+evaluation:
+  neutralization:
+    enabled: true
+    industry: true
+    market_cap: true
+    standardize: true
+    industry_path: industry/industry.csv
+    industry_code_column: symbol
+    industry_column: industry

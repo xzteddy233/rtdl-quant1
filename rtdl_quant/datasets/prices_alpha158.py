@@ -92,6 +92,7 @@ class PricesAlpha158Builder:
         "close",
         "volume",
         "amount",
+        "turn",
         "tradestatus",
         "isST",
     }
@@ -187,6 +188,7 @@ class PricesAlpha158Builder:
             "close",
             "volume",
             "amount",
+            "turn",
             "tradestatus",
             "isST",
         ]
@@ -201,6 +203,10 @@ class PricesAlpha158Builder:
         factors = compute_alpha158(raw)
         future_close = raw["close"].shift(-self.config.horizon)
         factors["future_return"] = future_close / raw["close"] - 1.0
+        turnover_fraction = raw["turn"] / 100.0
+        factors["float_market_cap"] = (
+            raw["close"] * raw["volume"] / turnover_fraction
+        ).where(turnover_fraction.gt(0))
         factors["date"] = raw["date"].to_numpy()
         factors["code"] = raw["symbol"].astype(str).to_numpy()
 
@@ -214,13 +220,20 @@ class PricesAlpha158Builder:
         if self.config.end_date is not None:
             mask &= raw["date"].le(pd.Timestamp(self.config.end_date))
 
-        columns = ["date", "code", *ALPHA158_FEATURES, "future_return"]
+        columns = [
+            "date",
+            "code",
+            *ALPHA158_FEATURES,
+            "future_return",
+            "float_market_cap",
+        ]
         result = factors.loc[mask, columns].replace([np.inf, -np.inf], np.nan)
         result = result.dropna(subset=[*ALPHA158_FEATURES, "future_return"])
         result.loc[:, ALPHA158_FEATURES] = result.loc[
             :, ALPHA158_FEATURES
         ].astype(np.float32)
         result["future_return"] = result["future_return"].astype(np.float32)
+        result["float_market_cap"] = result["float_market_cap"].astype(np.float64)
         return result.reset_index(drop=True)
 
     @staticmethod

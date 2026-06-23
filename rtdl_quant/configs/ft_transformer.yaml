@@ -13,9 +13,9 @@ data:
   future_return_column: future_return
   date_column: date
   code_column: code
-  batch_size: 64
+  batch_size: 128
   num_workers: 0
-  load_max_instruments: 200
+  load_max_instruments: 500
   splits:
     train: {start: "2014-01-01", end: "2021-12-31"}
     valid: {start: "2022-01-01", end: "2023-12-31"}
@@ -48,3 +48,14 @@ trainer:
   gradient_clip_norm: 1.0
   mixed_precision: true
   device: auto
+  show_progress: false
+
+evaluation:
+  neutralization:
+    enabled: true
+    industry: true
+    market_cap: true
+    standardize: true
+    industry_path: industry/industry.csv
+    industry_code_column: symbol
+    industry_column: industry
