@@ -1,0 +1,22 @@
+# Core numerical stack
+numpy>=1.26,<3
+pandas>=2.1,<3
+scipy>=1.11,<2
+scikit-learn>=1.3,<2
+pyarrow>=14
+PyYAML>=6,<7
+
+# Deep learning and official RTDL models
+torch>=2.2,<3
+rtdl-revisiting-models>=0.0.2
+tensorboard>=2.15,<3
+tqdm>=4.66,<5
+
+# Research and visualization
+matplotlib>=3.8,<4
+
+# Data source (optional in production environments, required for Qlib ingestion)
+pyqlib>=0.9.6
+
+# Development
+pytest>=8,<10

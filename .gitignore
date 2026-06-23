@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+rtdl_quant/outputs/*
+!rtdl_quant/outputs/.gitkeep
+data/
+*.pt
+*.pth
+events.out.tfevents.*

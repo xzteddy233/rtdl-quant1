@@ -1,0 +1,36 @@
+experiment:
+  name: alpha158_resnet_baseline
+  seed: 42
+  output_dir: rtdl_quant/outputs
+
+data:
+  path: data/alpha158.parquet
+  feature_prefix: feature_
+  label_column: label
+  future_return_column: future_return
+  date_column: date
+  code_column: code
+  batch_size: 256
+  num_workers: 0
+  splits:
+    train: {start: "2008-01-01", end: "2016-12-31"}
+    valid: {start: "2017-01-01", end: "2018-12-31"}
+    test: {start: "2019-01-01", end: "2022-12-31"}
+
+model:
+  name: resnet
+  d_in: 158
+  depth: 4
+  width: 256
+  hidden_factor: 2.0
+  dropout_first: 0.25
+  dropout_second: 0.0
+
+trainer:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  patience: 12
+  gradient_clip_norm: 1.0
+  mixed_precision: true
+  device: auto
