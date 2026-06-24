@@ -1,6 +1,6 @@
 experiment:
   name: alpha158_resnet
-  seed: 42
+  seed: 2004
   output_dir: rtdl_quant/outputs
 
 data:

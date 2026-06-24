@@ -1,5 +1,5 @@
 experiment:
-  name: alpha158_resnet_baseline
+  name: alpha158_xgboost
   seed: 2004
   output_dir: rtdl_quant/outputs
 
@@ -13,8 +13,6 @@ data:
   future_return_column: future_return
   date_column: date
   code_column: code
-  batch_size: 256
-  num_workers: 0
   load_max_instruments: 500
   splits:
     train: {start: "2014-01-01", end: "2021-12-31"}
@@ -26,25 +24,24 @@ data:
     horizon: 20
     exclude_st: true
     require_trading: true
-    max_instruments: 200
+    max_instruments: null
 
 model:
-  name: resnet
-  d_in: 158
-  depth: 4
-  width: 256
-  hidden_factor: 2.0
-  dropout_first: 0.25
-  dropout_second: 0.0
-
-trainer:
-  epochs: 100
-  learning_rate: 0.001
-  weight_decay: 0.00001
-  patience: 12
-  gradient_clip_norm: 1.0
-  mixed_precision: true
-  device: auto
+  name: xgboost
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.03
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.0
+  reg_lambda: 1.0
+  min_child_weight: 10
+  objective: reg:squarederror
+  eval_metric: rmse
+  tree_method: hist
+  early_stopping_rounds: 50
+  n_jobs: -1
+  verbose: false
 
 evaluation:
   neutralization:

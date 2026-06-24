@@ -8,6 +8,8 @@ MODEL_OUTPUTS = {
     "mlp": "alpha158_mlp",
     "resnet": "alpha158_resnet",
     "ft_transformer": "alpha158_ft_transformer",
+    "xgboost": "alpha158_xgboost",
+    "catboost": "alpha158_catboost",
 }
 
 

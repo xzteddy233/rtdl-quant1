@@ -10,11 +10,13 @@ if [[ -n "$FORCE" && "$FORCE" != "--force" ]]; then
   exit 2
 fi
 
-MODELS=(mlp resnet ftt)
+MODELS=(mlp resnet ftt xgboost catboost)
 OUTPUTS=(
   "rtdl_quant/outputs/alpha158_mlp"
   "rtdl_quant/outputs/alpha158_resnet"
   "rtdl_quant/outputs/alpha158_ft_transformer"
+  "rtdl_quant/outputs/alpha158_xgboost"
+  "rtdl_quant/outputs/alpha158_catboost"
 )
 
 for index in "${!MODELS[@]}"; do

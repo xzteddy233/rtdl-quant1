@@ -74,6 +74,10 @@ class ExperimentRunner:
         save_config(self.config, self.output_dir / "config.yaml")
 
         frame, feature_columns = self._load_frame()
+        model_name = str(self.config["model"]["name"]).lower()
+        if model_name in {"xgboost", "xgb", "catboost", "cat"}:
+            return self._run_tree_model(frame, feature_columns, seed)
+
         loaders = self._build_loaders(frame, feature_columns)
         model, optimizer = self._build_model(len(feature_columns))
         trainer_config = self._trainer_config()
@@ -91,10 +95,35 @@ class ExperimentRunner:
                 "No future_return column was found; grouped returns use labels as a proxy"
             )
             future_returns = labels
+        return self._write_evaluation_outputs(
+            predictions=predictions,
+            labels=labels,
+            future_returns=future_returns,
+            dates=test_dataset.dates,
+            codes=test_dataset.codes,
+            source_frame=frame,
+            best_validation_loss=fit_result.validation_loss,
+            best_epoch=float(fit_result.best_epoch),
+            history=fit_result.history,
+        )
+
+    def _write_evaluation_outputs(
+        self,
+        *,
+        predictions: np.ndarray,
+        labels: np.ndarray,
+        future_returns: np.ndarray,
+        dates: Any,
+        codes: Any,
+        source_frame: pd.DataFrame,
+        best_validation_loss: float,
+        best_epoch: float,
+        history: Any,
+    ) -> dict[str, float]:
         evaluation = pd.DataFrame(
             {
-                "date": pd.to_datetime(test_dataset.dates),
-                "code": test_dataset.codes,
+                "date": pd.to_datetime(dates),
+                "code": codes,
                 "raw_prediction": predictions,
                 "label": labels,
                 "future_return": future_returns,
@@ -110,7 +139,9 @@ class ExperimentRunner:
             evaluation, prediction_column="raw_prediction"
         ).run()
 
-        neutralization_summary = self._neutralize_predictions(evaluation, frame)
+        neutralization_summary = self._neutralize_predictions(
+            evaluation, source_frame
+        )
         if neutralization_summary is not None:
             evaluation, coverage = neutralization_summary
             pd.DataFrame([asdict(coverage)]).to_csv(
@@ -137,8 +168,8 @@ class ExperimentRunner:
             "rank_ic": summary.rank_ic_mean,
             "icir": summary.icir,
             "rank_icir": summary.rank_icir,
-            "best_validation_loss": fit_result.validation_loss,
-            "best_epoch": float(fit_result.best_epoch),
+            "best_validation_loss": best_validation_loss,
+            "best_epoch": best_epoch,
             "top_bottom_mean": float(group_result.top_bottom_spread.mean()),
             "raw_ic": raw_summary.ic_mean,
             "raw_rank_ic": raw_summary.rank_ic_mean,
@@ -149,11 +180,158 @@ class ExperimentRunner:
             ),
         }
         pd.DataFrame([metrics]).to_csv(self.output_dir / "metrics.csv", index=False)
-        pd.DataFrame(fit_result.history).to_csv(
+        pd.DataFrame(history).to_csv(
             self.output_dir / "training_history.csv", index=False
         )
         LOGGER.info("experiment_complete metrics=%s", metrics)
         return metrics
+
+    def _run_tree_model(
+        self, frame: pd.DataFrame, feature_columns: list[str], seed: int
+    ) -> dict[str, float]:
+        splits = self._build_frame_splits(frame, feature_columns)
+        model_name = str(self.config["model"]["name"]).lower()
+        if model_name in {"xgboost", "xgb"}:
+            model, history, best_validation_loss, best_epoch = self._fit_xgboost(
+                splits, seed
+            )
+            model.save_model(self.output_dir / "model.json")
+        elif model_name in {"catboost", "cat"}:
+            model, history, best_validation_loss, best_epoch = self._fit_catboost(
+                splits, seed
+            )
+            model.save_model(str(self.output_dir / "model.cbm"))
+        else:
+            raise ValueError(f"Unsupported tree model: {model_name}")
+
+        predictions = np.asarray(model.predict(splits["test"]["x"]), dtype=np.float32)
+        return self._write_evaluation_outputs(
+            predictions=predictions,
+            labels=splits["test"]["y"],
+            future_returns=splits["test"]["future_returns"],
+            dates=splits["test"]["date"],
+            codes=splits["test"]["code"],
+            source_frame=frame,
+            best_validation_loss=best_validation_loss,
+            best_epoch=float(best_epoch),
+            history=history,
+        )
+
+    def _build_frame_splits(
+        self, frame: pd.DataFrame, feature_columns: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        data = self.config["data"]
+        date_column = data.get("date_column", "date")
+        code_column = data.get("code_column", "code")
+        label_column = data.get("label_column", "label")
+        future_return_column = data.get("future_return_column", "future_return")
+        dates = pd.to_datetime(frame[date_column])
+        splits = {
+            name: DatasetSplit(**bounds) for name, bounds in data["splits"].items()
+        }
+        result: dict[str, dict[str, Any]] = {}
+        for name, split in splits.items():
+            part = frame.loc[split.mask(dates)].copy()
+            part[date_column] = pd.to_datetime(part[date_column])
+            part = part.sort_values([date_column, code_column]).reset_index(drop=True)
+            numeric = part.loc[:, feature_columns].apply(
+                pd.to_numeric, errors="coerce"
+            )
+            labels = pd.to_numeric(part[label_column], errors="coerce")
+            valid = np.isfinite(numeric.to_numpy()).all(axis=1) & np.isfinite(
+                labels.to_numpy()
+            )
+            part = part.loc[valid].copy()
+            numeric = numeric.loc[valid]
+            labels = labels.loc[valid]
+            if future_return_column in part:
+                future_returns = pd.to_numeric(
+                    part[future_return_column], errors="coerce"
+                ).to_numpy(dtype=np.float32)
+            else:
+                future_returns = labels.to_numpy(dtype=np.float32)
+            result[name] = {
+                "x": numeric.to_numpy(dtype=np.float32),
+                "y": labels.to_numpy(dtype=np.float32),
+                "future_returns": future_returns,
+                "date": part[date_column].dt.strftime("%Y-%m-%d").to_numpy(),
+                "code": part[code_column].astype(str).to_numpy(),
+            }
+        return result
+
+    def _fit_xgboost(
+        self, splits: dict[str, dict[str, Any]], seed: int
+    ) -> tuple[Any, tuple[dict[str, float], ...], float, int]:
+        try:
+            from xgboost import XGBRegressor
+        except Exception as error:
+            raise RuntimeError(
+                "XGBoost could not be imported. Install the Python package with "
+                "`pip install xgboost`. On macOS, XGBoost also requires the "
+                "OpenMP runtime; install it with `brew install libomp`."
+            ) from error
+
+        model_config = dict(self.config["model"])
+        model_config.pop("name", None)
+        model_config.pop("d_in", None)
+        model_config.setdefault("objective", "reg:squarederror")
+        model_config.setdefault("eval_metric", "rmse")
+        model_config.setdefault("tree_method", "hist")
+        model_config.setdefault("random_state", seed)
+        model_config.setdefault("n_jobs", -1)
+        verbose = bool(model_config.pop("verbose", False))
+        model = XGBRegressor(**model_config)
+        model.fit(
+            splits["train"]["x"],
+            splits["train"]["y"],
+            eval_set=[(splits["valid"]["x"], splits["valid"]["y"])],
+            verbose=verbose,
+        )
+        valid_predictions = np.asarray(
+            model.predict(splits["valid"]["x"]), dtype=np.float32
+        )
+        validation_loss = mse(splits["valid"]["y"], valid_predictions)
+        best_epoch = getattr(model, "best_iteration", None)
+        if best_epoch is None:
+            best_epoch = int(model_config.get("n_estimators", 0))
+        history = ({"epoch": float(best_epoch), "validation_loss": validation_loss},)
+        return model, history, float(validation_loss), int(best_epoch)
+
+    def _fit_catboost(
+        self, splits: dict[str, dict[str, Any]], seed: int
+    ) -> tuple[Any, tuple[dict[str, float], ...], float, int]:
+        try:
+            from catboost import CatBoostRegressor
+        except ImportError as error:
+            raise ImportError(
+                "CatBoost is not installed. Install it with `pip install catboost`."
+            ) from error
+
+        model_config = dict(self.config["model"])
+        model_config.pop("name", None)
+        model_config.pop("d_in", None)
+        fit_verbose = model_config.pop("fit_verbose", False)
+        model_config.setdefault("loss_function", "RMSE")
+        model_config.setdefault("eval_metric", "RMSE")
+        model_config.setdefault("random_seed", seed)
+        model_config.setdefault("allow_writing_files", False)
+        model = CatBoostRegressor(**model_config)
+        model.fit(
+            splits["train"]["x"],
+            splits["train"]["y"],
+            eval_set=(splits["valid"]["x"], splits["valid"]["y"]),
+            use_best_model=True,
+            verbose=fit_verbose,
+        )
+        valid_predictions = np.asarray(
+            model.predict(splits["valid"]["x"]), dtype=np.float32
+        )
+        validation_loss = mse(splits["valid"]["y"], valid_predictions)
+        best_epoch = model.get_best_iteration()
+        if best_epoch is None:
+            best_epoch = int(model_config.get("iterations", 0))
+        history = ({"epoch": float(best_epoch), "validation_loss": validation_loss},)
+        return model, history, float(validation_loss), int(best_epoch)
 
     def _neutralize_predictions(
         self, evaluation: pd.DataFrame, source_frame: pd.DataFrame

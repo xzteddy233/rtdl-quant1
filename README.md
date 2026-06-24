@@ -1,8 +1,8 @@
 # RTDL Quant
 
 A modular research framework for cross-sectional stock prediction with
-Alpha158, MLP, ResNet, FT-Transformer, IC/RankIC analysis, and grouped
-portfolio backtests.
+Alpha158, MLP, ResNet, FT-Transformer, XGBoost, CatBoost, IC/RankIC analysis,
+and grouped portfolio backtests.
 
 The neural architectures follow the design in *Revisiting Deep Learning Models
 for Tabular Data* (NeurIPS 2021). The framework keeps data, estimators,
@@ -126,6 +126,8 @@ Run a specific model with a dedicated configuration:
 ./train_model.sh mlp
 ./train_model.sh resnet
 ./train_model.sh ftt
+./train_model.sh xgboost
+./train_model.sh catboost
 ```
 
 Train all models sequentially and create a comparison table:
@@ -146,18 +148,44 @@ The summary is written to:
 rtdl_quant/outputs/model_comparison.csv
 ```
 
+### Current comparison result
+
+The latest local run uses the same Alpha158 cache, 500-stock loading universe,
+chronological train/validation/test split, and industry + market-cap
+neutralized final scores for the neural models below. XGBoost and CatBoost use
+the same data contract and will be added to this table after running
+`./train_all.sh --force` or their individual training commands.
+
+| Model | MSE | RMSE | IC | RankIC | ICIR | RankICIR | Top-Bottom Mean | Best Epoch |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| FT-Transformer | 0.0820 | 0.2864 | 0.1229 | 0.1050 | 1.3964 | 1.1637 | 0.0271 | 7 |
+| MLP | 0.0820 | 0.2864 | 0.1192 | 0.0978 | 1.5025 | 1.2816 | 0.0255 | 9 |
+| ResNet | 0.0825 | 0.2872 | 0.1053 | 0.0972 | 1.2447 | 1.1942 | 0.0218 | 10 |
+
+For comparison, the raw, non-neutralized score metrics are also saved in
+`model_comparison.csv` as `raw_ic`, `raw_rank_ic`, `raw_icir`,
+`raw_rank_icir`, and `raw_top_bottom_mean`.
+
 All three models reuse `data/alpha158_prices.parquet`; factors are not rebuilt
-between model runs. Results are stored separately:
+between model runs. XGBoost and CatBoost use the same cache and output
+contract. Results are stored separately:
 
 ```text
 rtdl_quant/outputs/alpha158_mlp/
 rtdl_quant/outputs/alpha158_resnet/
 rtdl_quant/outputs/alpha158_ft_transformer/
+rtdl_quant/outputs/alpha158_xgboost/
+rtdl_quant/outputs/alpha158_catboost/
 ```
 
 The FTT configuration uses two 64-dimensional Transformer blocks and a batch
 size of 128 to reduce runtime. It is still substantially slower than MLP and
 ResNet on CPU.
+
+XGBoost saves `model.json`; CatBoost saves `model.cbm`. Their evaluation files
+match the neural-network outputs: `metrics.csv`, `daily_ic.csv`,
+`group_returns.csv`, `predictions.parquet`, and the raw-score diagnostics when
+neutralization is enabled.
 
 ## Industry and market-cap neutralization
 

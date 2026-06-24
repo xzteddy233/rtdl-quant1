@@ -12,6 +12,10 @@ rtdl-revisiting-models>=0.0.2
 tensorboard>=2.15,<3
 tqdm>=4.66,<5
 
+# Tree-model baselines
+xgboost>=2,<4
+catboost>=1.2,<2
+
 # Research and visualization
 matplotlib>=3.8,<4
 

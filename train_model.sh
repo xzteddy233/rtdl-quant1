@@ -12,8 +12,14 @@ case "$MODEL" in
   ftt|ft_transformer)
     CONFIG="rtdl_quant/configs/ft_transformer.yaml"
     ;;
+  xgb|xgboost)
+    CONFIG="rtdl_quant/configs/xgboost.yaml"
+    ;;
+  cat|catboost)
+    CONFIG="rtdl_quant/configs/catboost.yaml"
+    ;;
   *)
-    echo "Usage: ./train_model.sh {mlp|resnet|ftt}" >&2
+    echo "Usage: ./train_model.sh {mlp|resnet|ftt|xgboost|catboost}" >&2
     exit 2
     ;;
 esac

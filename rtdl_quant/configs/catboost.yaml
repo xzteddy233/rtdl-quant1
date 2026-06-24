@@ -1,5 +1,5 @@
 experiment:
-  name: alpha158_resnet_baseline
+  name: alpha158_catboost
   seed: 2004
   output_dir: rtdl_quant/outputs
 
@@ -13,8 +13,6 @@ data:
   future_return_column: future_return
   date_column: date
   code_column: code
-  batch_size: 256
-  num_workers: 0
   load_max_instruments: 500
   splits:
     train: {start: "2014-01-01", end: "2021-12-31"}
@@ -26,25 +24,23 @@ data:
     horizon: 20
     exclude_st: true
     require_trading: true
-    max_instruments: 200
+    max_instruments: null
 
 model:
-  name: resnet
-  d_in: 158
-  depth: 4
-  width: 256
-  hidden_factor: 2.0
-  dropout_first: 0.25
-  dropout_second: 0.0
-
-trainer:
-  epochs: 100
-  learning_rate: 0.001
-  weight_decay: 0.00001
-  patience: 12
-  gradient_clip_norm: 1.0
-  mixed_precision: true
-  device: auto
+  name: catboost
+  iterations: 800
+  depth: 6
+  learning_rate: 0.03
+  l2_leaf_reg: 3.0
+  loss_function: RMSE
+  eval_metric: RMSE
+  od_type: Iter
+  od_wait: 50
+  bootstrap_type: Bernoulli
+  subsample: 0.8
+  rsm: 0.8
+  thread_count: -1
+  fit_verbose: false
 
 evaluation:
   neutralization:
