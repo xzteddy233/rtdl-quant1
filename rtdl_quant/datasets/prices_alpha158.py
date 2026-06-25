@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -127,10 +127,39 @@ class PricesAlpha158Builder:
 
     def build_to_parquet(self) -> Path:
         """Build the configured universe and save a reusable Parquet cache."""
+        return self._write_parquet(
+            output=Path(self.config.output_path),
+            transform=self.transform_file,
+        )
+
+    def build_factors_to_parquet(
+        self,
+        *,
+        output_path: str | Path | None = None,
+        include_future_return: bool = False,
+        include_market_cap: bool = False,
+    ) -> Path:
+        """Export Alpha158 factors without requiring a model-training label.
+
+        This is useful when the goal is to inspect, reuse, or upload the factor
+        matrix independently from the training pipeline. By default the output
+        contains only ``date``, ``code`` and the 158 factor columns.
+        """
+        output = Path(output_path or self.config.output_path)
+        return self._write_parquet(
+            output=output,
+            transform=lambda path: self.transform_factor_file(
+                path,
+                include_future_return=include_future_return,
+                include_market_cap=include_market_cap,
+            ),
+        )
+
+    def _write_parquet(self, *, output: Path, transform: Any) -> Path:
+        """Build the configured universe and save a reusable Parquet cache."""
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        output = Path(self.config.output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_suffix(output.suffix + ".tmp")
         temporary.unlink(missing_ok=True)
@@ -139,7 +168,7 @@ class PricesAlpha158Builder:
         try:
             paths = self.files()
             for index, path in enumerate(paths, start=1):
-                frame = self.transform_file(path)
+                frame = transform(path)
                 if frame.empty:
                     continue
                 table = pa.Table.from_pandas(frame, preserve_index=False)
@@ -174,7 +203,7 @@ class PricesAlpha158Builder:
         temporary.replace(output)
         return output.resolve()
 
-    def transform_file(self, path: str | Path) -> pd.DataFrame:
+    def _load_raw_prices(self, path: str | Path) -> pd.DataFrame:
         raw = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
         missing = self.required_columns.difference(raw.columns)
         if missing:
@@ -196,7 +225,10 @@ class PricesAlpha158Builder:
             pd.to_numeric, errors="coerce"
         )
         raw = raw.dropna(subset=["date", "open", "high", "low", "close"])
-        raw = raw.sort_values("date").drop_duplicates("date", keep="last")
+        return raw.sort_values("date").drop_duplicates("date", keep="last")
+
+    def transform_file(self, path: str | Path) -> pd.DataFrame:
+        raw = self._load_raw_prices(path)
         if raw.empty:
             return pd.DataFrame()
 
@@ -234,6 +266,59 @@ class PricesAlpha158Builder:
         ].astype(np.float32)
         result["future_return"] = result["future_return"].astype(np.float32)
         result["float_market_cap"] = result["float_market_cap"].astype(np.float64)
+        return result.reset_index(drop=True)
+
+    def transform_factor_file(
+        self,
+        path: str | Path,
+        *,
+        include_future_return: bool = False,
+        include_market_cap: bool = False,
+    ) -> pd.DataFrame:
+        """Compute factor-only rows for one instrument CSV."""
+        raw = self._load_raw_prices(path)
+        if raw.empty:
+            return pd.DataFrame()
+
+        factors = compute_alpha158(raw)
+        factors["date"] = raw["date"].to_numpy()
+        factors["code"] = raw["symbol"].astype(str).to_numpy()
+        columns = ["date", "code", *ALPHA158_FEATURES]
+
+        if include_future_return:
+            future_close = raw["close"].shift(-self.config.horizon)
+            factors["future_return"] = future_close / raw["close"] - 1.0
+            columns.append("future_return")
+
+        if include_market_cap:
+            turnover_fraction = raw["turn"] / 100.0
+            factors["float_market_cap"] = (
+                raw["close"] * raw["volume"] / turnover_fraction
+            ).where(turnover_fraction.gt(0))
+            columns.append("float_market_cap")
+
+        mask = pd.Series(True, index=raw.index)
+        if self.config.require_trading:
+            mask &= raw["tradestatus"].eq(1)
+        if self.config.exclude_st:
+            mask &= raw["isST"].eq(0)
+        if self.config.start_date is not None:
+            mask &= raw["date"].ge(pd.Timestamp(self.config.start_date))
+        if self.config.end_date is not None:
+            mask &= raw["date"].le(pd.Timestamp(self.config.end_date))
+
+        required = [*ALPHA158_FEATURES]
+        if include_future_return:
+            required.append("future_return")
+        result = factors.loc[mask, columns].replace([np.inf, -np.inf], np.nan)
+        result = result.dropna(subset=required)
+        result.loc[:, ALPHA158_FEATURES] = result.loc[
+            :, ALPHA158_FEATURES
+        ].astype(np.float32)
+        if include_future_return:
+            result["future_return"] = result["future_return"].astype(np.float32)
+        if include_market_cap:
+            result["float_market_cap"] = result["float_market_cap"].astype(np.float64)
         return result.reset_index(drop=True)
 
     @staticmethod

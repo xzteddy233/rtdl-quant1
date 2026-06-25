@@ -46,6 +46,45 @@ Install it separately only when using `Alpha158Dataset.from_qlib`:
 pip install ".[qlib]"
 ```
 
+### Google Colab terminal setup
+
+Colab already provides Python, so do not use `run.sh` or `train_model.sh` there
+if virtual-environment creation fails. After cloning the repository and
+installing requirements, prepare data and configs with:
+
+```bash
+python colab_prepare.py --load-max-instruments 500
+```
+
+By default the script copies:
+
+```text
+/content/drive/MyDrive/alpha158_prices.parquet -> data/alpha158_prices.parquet
+/content/drive/MyDrive/industry.csv -> industry/industry.csv
+```
+
+It then checks whether `float_market_cap` exists and chooses neutralization
+automatically:
+
+- industry + market-cap neutralization when both `industry.csv` and
+  `float_market_cap` exist;
+- industry-only neutralization when only `industry.csv` exists;
+- no neutralization when `industry.csv` is missing.
+
+Override this behavior when needed:
+
+```bash
+python colab_prepare.py --neutralization off
+python colab_prepare.py --neutralization industry
+python colab_prepare.py --load-max-instruments 300
+```
+
+Then train with the Python module directly:
+
+```bash
+python -m rtdl_quant.main --config rtdl_quant/configs/mlp.yaml
+```
+
 ## Data contract
 
 The experiment runner accepts CSV or Parquet with one row per stock and date:
@@ -108,6 +147,38 @@ factors using only current and historical observations, and creates the raw
 future 20-trading-day return. Cross-sectional rank labels are added only after
 all instruments are combined. The Parquet cache is also ignored by Git.
 
+### Export factors without training
+
+To calculate Alpha158 factors only, run:
+
+```bash
+python -m rtdl_quant.scripts.export_alpha158_factors \
+  --prices-dir prices \
+  --output data/alpha158_factors.parquet \
+  --start-date 2014-01-01 \
+  --end-date 2026-06-18
+```
+
+The default factor export contains:
+
+```text
+date | code | 158 Alpha158 factor columns
+```
+
+Optional columns can be added when needed:
+
+```bash
+python -m rtdl_quant.scripts.export_alpha158_factors \
+  --prices-dir prices \
+  --output data/alpha158_factors_with_meta.parquet \
+  --start-date 2014-01-01 \
+  --end-date 2026-06-18 \
+  --include-future-return \
+  --include-market-cap
+```
+
+Use `--max-instruments 100` for a quick sample export.
+
 ## Run an experiment
 
 The default configuration is a one-command pipeline. It checks for the
@@ -152,23 +223,22 @@ rtdl_quant/outputs/model_comparison.csv
 
 The latest local run uses the same Alpha158 cache, 500-stock loading universe,
 chronological train/validation/test split, and industry + market-cap
-neutralized final scores for the neural models below. XGBoost and CatBoost use
-the same data contract and will be added to this table after running
-`./train_all.sh --force` or their individual training commands.
+neutralized final scores for all models below.
 
 | Model | MSE | RMSE | IC | RankIC | ICIR | RankICIR | Top-Bottom Mean | Best Epoch |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| FT-Transformer | 0.0820 | 0.2864 | 0.1229 | 0.1050 | 1.3964 | 1.1637 | 0.0271 | 7 |
-| MLP | 0.0820 | 0.2864 | 0.1192 | 0.0978 | 1.5025 | 1.2816 | 0.0255 | 9 |
-| ResNet | 0.0825 | 0.2872 | 0.1053 | 0.0972 | 1.2447 | 1.1942 | 0.0218 | 10 |
+| XGBoost | 0.0817 | 0.2859 | 0.1237 | 0.1052 | 1.4504 | 1.2369 | 0.0263 | 179 |
+| CatBoost | 0.0817 | 0.2858 | 0.1238 | 0.1052 | 1.4133 | 1.1901 | 0.0248 | 311 |
+| MLP | 0.0819 | 0.2862 | 0.1228 | 0.1019 | 1.5359 | 1.3041 | 0.0282 | 15 |
+| FT-Transformer | 0.0820 | 0.2864 | 0.1223 | 0.1018 | 1.4614 | 1.2015 | 0.0264 | 12 |
+| ResNet | 0.0823 | 0.2868 | 0.1151 | 0.0978 | 1.3835 | 1.2005 | 0.0264 | 9 |
 
 For comparison, the raw, non-neutralized score metrics are also saved in
 `model_comparison.csv` as `raw_ic`, `raw_rank_ic`, `raw_icir`,
 `raw_rank_icir`, and `raw_top_bottom_mean`.
 
-All three models reuse `data/alpha158_prices.parquet`; factors are not rebuilt
-between model runs. XGBoost and CatBoost use the same cache and output
-contract. Results are stored separately:
+All models reuse `data/alpha158_prices.parquet`; factors are not rebuilt
+between model runs. Results are stored separately:
 
 ```text
 rtdl_quant/outputs/alpha158_mlp/

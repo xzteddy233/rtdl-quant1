@@ -78,3 +78,31 @@ def test_builder_creates_future_return_and_metadata(tmp_path) -> None:
     }.issubset(result.columns)
     assert result["code"].eq("SH600000").all()
     assert len(result) > 0
+
+
+def test_factor_export_does_not_require_future_return(tmp_path) -> None:
+    path = tmp_path / "SH600000.csv"
+    make_prices(rows=100).to_csv(path, index=False, encoding="utf-8-sig")
+    builder = PricesAlpha158Builder(
+        PricesBuildConfig(prices_dir=tmp_path, horizon=20)
+    )
+    factors = builder.transform_factor_file(path)
+    dataset = builder.transform_file(path)
+    assert set(ALPHA158_FEATURES).issubset(factors.columns)
+    assert "future_return" not in factors.columns
+    assert len(factors) > len(dataset)
+
+
+def test_factor_export_can_include_optional_columns(tmp_path) -> None:
+    path = tmp_path / "SH600000.csv"
+    make_prices(rows=100).to_csv(path, index=False, encoding="utf-8-sig")
+    builder = PricesAlpha158Builder(
+        PricesBuildConfig(prices_dir=tmp_path, horizon=20)
+    )
+    result = builder.transform_factor_file(
+        path,
+        include_future_return=True,
+        include_market_cap=True,
+    )
+    assert {"future_return", "float_market_cap"}.issubset(result.columns)
+    assert len(result) > 0
